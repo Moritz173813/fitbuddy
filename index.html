@@ -269,7 +269,7 @@ function applyDeco(){
 function settingsDlg(){
  const n=new Date();let E=easter(n.getFullYear());if(n>new Date(E.getTime()+2*864e5))E=easter(n.getFullYear()+1);
  const ed=E.toLocaleDateString('de-DE',{day:'numeric',month:'long',year:'numeric'}),cur=S.season||'auto';
- open(`<div class="row sp"><h3>⚙️ Einstellungen</h3><button class="btn alt sm" onclick="closeM()">Schließen</button></div><label>Saisonale Deko<select onchange="S.season=this.value;save();applyDeco();settingsDlg()">${[['auto','Automatisch'],['off','Aus'],['xmas','Weihnachten (Vorschau)'],['halloween','Halloween (Vorschau)'],['easter','Ostern (Vorschau)']].map(o=>`<option value="${o[0]}" ${o[0]===cur?'selected':''}>${o[1]}</option>`).join('')}</select></label><p class="mut">Automatisch:<br>🎃 Herbst &amp; Halloween: 10. bis 31. Oktober<br>🎄 Weihnachten: 1. November bis 6. Januar<br>🐣 Ostern: 14 Tage vor bis Ostermontag (Ostersonntag: ${ed})</p>`)}
+ open(`<div class="row sp"><h3>⚙️ Einstellungen</h3><button class="btn alt sm" onclick="closeM()">Schließen</button></div><label>Saisonale Deko<select onchange="S.season=this.value;save();applyDeco();settingsDlg()">${[['auto','Automatisch'],['off','Aus'],['xmas','Weihnachten (Vorschau)'],['halloween','Halloween (Vorschau)'],['easter','Ostern (Vorschau)']].map(o=>`<option value="${o[0]}" ${o[0]===cur?'selected':''}>${o[1]}</option>`).join('')}</select></label><label>Online-Lebensmittel aus<select onchange="S.country=this.value;save();settingsDlg()">${COUNTRIES.map(c=>`<option value="${c[0]}" ${c[0]===(S.country||'de')?'selected':''}>${c[1]}</option>`).join('')}</select></label><p class="mut">Zeigt nur Produkte aus diesem Land mit Namen in der dortigen Sprache. Standard: Deutschland.</p><p class="mut">Automatisch:<br>🎃 Herbst &amp; Halloween: 10. bis 31. Oktober<br>🎄 Weihnachten: 1. November bis 6. Januar<br>🐣 Ostern: 14 Tage vor bis Ostermontag (Ostersonntag: ${ed})</p>`)}
 
 // Mahlzeiten-Ansicht, Training
 S.burn=S.burn||{};
@@ -300,6 +300,8 @@ function workPut(){const a=ACT[+$('#wa').value],m=+$('#wm').value||0,k=+$('#wk')
 function delW(i){S.burn[T()].splice(i,1);render()}
 
 // Open Food Facts
+const COUNTRIES=[['de','Deutschland','germany','de'],['at','Österreich','austria','de'],['ch','Schweiz','switzerland','de'],['fr','Frankreich','france','fr'],['it','Italien','italy','it'],['es','Spanien','spain','es'],['gb','Vereinigtes Königreich','united-kingdom','en'],['us','USA','united-states','en'],['all','Alle Länder','','']];
+const cty=()=>{const a=COUNTRIES.find(c=>c[0]===S.country)||COUNTRIES[0];return {n:a[1],t:a[2],l:a[3]}};
 let offRes=[],offT=null,offCtl=null,offId=0;
 function offQueue(){offId++;clearTimeout(offT);try{offCtl&&offCtl.abort()}catch(e){}
  const qe=$('#q'),o=$('#off');if(!qe||!o)return;
@@ -307,18 +309,18 @@ function offQueue(){offId++;clearTimeout(offT);try{offCtl&&offCtl.abort()}catch(
  o.innerHTML='<p class="mut" style="margin-top:10px">Suche online …</p>';offT=setTimeout(offSearch,600)}
 async function offSearch(){
  const qe=$('#q'),o=$('#off'),id=offId;if(!qe||!o)return;
- const q=qe.value.trim();
+ const q=qe.value.trim(),C=cty();
  try{
-  const bc=/^\d{8,14}$/.test(q),F='fields=product_name,brands,nutriments,code';
-  const u=bc?`https://world.openfoodfacts.org/api/v2/product/${q}.json?${F}`:`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&${F}`;
+  const bc=/^\d{8,14}$/.test(q),F='fields=product_name,product_name_'+(C.l||'en')+',lang,brands,nutriments,code';
+  const u=bc?`https://world.openfoodfacts.org/api/v2/product/${q}.json?${F}`:`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=24&sort_by=unique_scans_n&lc=${C.l||'de'}${C.t?'&tagtype_0=countries&tag_contains_0=contains&tag_0='+C.t:''}&${F}`;
   const ctl=new AbortController();offCtl=ctl;const to=setTimeout(()=>ctl.abort(),8000);
   const res=await fetch(u,{signal:ctl.signal});clearTimeout(to);
   if(!res.ok)throw 0;
   const j=await res.json();if(id!==offId)return;
   const arr=bc?(j.product?[j.product]:[]):(j.products||[]);
-  offRes=arr.map(p=>{const m=p.nutriments||{},k=m['energy-kcal_100g']!=null?m['energy-kcal_100g']:(m.energy_100g?m.energy_100g/4.184:null),nm=(p.product_name||'').trim();
+  offRes=arr.map(p=>{const m=p.nutriments||{},k=m['energy-kcal_100g']!=null?m['energy-kcal_100g']:(m.energy_100g?m.energy_100g/4.184:null),nm=String((bc?p.product_name:(C.l&&p['product_name_'+C.l])||(!C.l||p.lang===C.l?p.product_name:''))||'').trim();
    return {n:nm+(p.brands?' ('+p.brands.split(',')[0].trim()+')':''),k:Math.round(k),p:r1(+m.proteins_100g||0),c:r1(+m.carbohydrates_100g||0),f:r1(+m.fat_100g||0),ok:k!=null&&nm}}).filter(x=>x.ok);
-  o.innerHTML=offRes.length?'<p class="mut" style="margin-top:10px">Online (Open Food Facts):</p>'+offRes.map((f,i)=>`<button class="food" onclick="offPick(${i})"><span>🌍 ${esc(f.n)}</span><span class="mut">${f.k} kcal/100 g</span></button>`).join(''):'<p class="mut" style="margin-top:10px">Online nichts gefunden. Leg es selbst an!</p>';
+  o.innerHTML=offRes.length?'<p class="mut" style="margin-top:10px">Online (Open Food Facts · '+C.n+'):</p>'+offRes.map((f,i)=>`<button class="food" onclick="offPick(${i})"><span>🌍 ${esc(f.n)}</span><span class="mut">${f.k} kcal/100 g</span></button>`).join(''):'<p class="mut" style="margin-top:10px">Online nichts gefunden. Leg es selbst an oder ändere das Land in den ⚙️ Einstellungen.</p>';
  }catch(e){if(id!==offId)return;o.innerHTML='<p class="mut" style="margin-top:10px">Online-Suche gerade nicht erreichbar.</p>'}}
 function offPick(i){const f=offRes[i];S.custom.unshift({n:f.n,e:'🌍',k:f.k,p:f.p,c:f.c,f:f.f});save();amount(0)}
 
