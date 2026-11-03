@@ -223,7 +223,7 @@ function sleepDlg(){open(`<h3>Schlaf letzte Nacht</h3><div class="grid2"><input 
 let curMeal=0;
 function addDlg(m){curMeal=m;open(`<h3>Essen suchen 🔍</h3><input id="q" placeholder="Name oder Barcode …" oninput="flist()" autocomplete="off"><div id="fl"></div><div id="off"></div><div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn alt sm" onclick="customDlg()">+ Eigenes Lebensmittel</button></div>`);flist();setTimeout(()=>$('#q').focus(),50)}
 function flist(){const q=$('#q').value.toLowerCase();const r=allFoods().filter(f=>f.n.toLowerCase().includes(q)).slice(0,30);
- $('#fl').innerHTML=r.map(f=>{const i=allFoods().indexOf(f);return `<button class="food" onclick="amount(${i})"><span>${f.e} ${esc(f.n)}</span><span class="mut">${f.k} kcal/100 g</span></button>`}).join('')||(q.trim().length<3?'<p class="mut">Nichts gefunden. Leg es selbst an!</p>':'');offQueue()}
+ $('#fl').innerHTML=r.map(f=>{const i=allFoods().indexOf(f);return `<button class="food" onclick="amount(${i})"><span>${f.e} ${esc(f.n)}</span><span class="mut">${f.k} kcal/100 g</span></button>`}).join('')||(q.trim().length<2?'<p class="mut">Nichts gefunden. Leg es selbst an!</p>':'');offQueue()}
 function put(i){const f=allFoods()[i],g=+$('#gr').value||0,x=g/100;if(!g)return;
  (S.log[T()]=S.log[T()]||[]).push({n:f.n,e:f.e,g,m:+$('#ml').value,k:f.k*x,p:f.p*x,c:f.c*x,f:f.f*x,mic:f.m?f.m.map(v=>v*x):null});closeM();render();toast('Hinzugefügt ✅')}
 function customDlg(){open(`<h3>Eigenes Lebensmittel</h3><p class="mut">Werte pro 100 g. Wir merken sie uns für das nächste Mal.</p><input id="cn" placeholder="Name"><div class="grid2"><input id="ck" type="number" placeholder="kcal"><input id="cp" type="number" placeholder="Eiweiß g"><input id="cc" type="number" placeholder="Kohlenhydrate g"><input id="cf" type="number" placeholder="Fett g"></div><button class="btn" onclick="saveCustom()">Speichern</button>`)}
@@ -302,14 +302,21 @@ function delW(i){S.burn[T()].splice(i,1);render()}
 // Open Food Facts
 const COUNTRIES=[['de','Deutschland','germany','de'],['at','Österreich','austria','de'],['ch','Schweiz','switzerland','de'],['fr','Frankreich','france','fr'],['it','Italien','italy','it'],['es','Spanien','spain','es'],['gb','Vereinigtes Königreich','united-kingdom','en'],['us','USA','united-states','en'],['all','Alle Länder','','']];
 const cty=()=>{const a=COUNTRIES.find(c=>c[0]===S.country)||COUNTRIES[0];return {n:a[1],t:a[2],l:a[3]}};
-let offRes=[],offT=null,offCtl=null,offId=0;
+let offRes=[],offT=null,offCtl=null,offId=0;const offCache={};
 function offQueue(){offId++;clearTimeout(offT);try{offCtl&&offCtl.abort()}catch(e){}
  const qe=$('#q'),o=$('#off');if(!qe||!o)return;
- if(qe.value.trim().length<3){o.innerHTML='';return}
- o.innerHTML='<p class="mut" style="margin-top:10px">Suche online …</p>';offT=setTimeout(offSearch,600)}
+ const q=qe.value.trim();
+ if(q.length<2){o.innerHTML='';o.style.opacity='';offRes=[];return}
+ const key=q.toLowerCase()+'|'+(S.country||'de');
+ if(offCache[key]){offRes=offCache[key];offShow(false);return}
+ if(offRes.length&&o.innerHTML)o.style.opacity='.5';else o.innerHTML='<p class="mut" style="margin-top:10px">Suche online …</p>';
+ offT=setTimeout(offSearch,250)}
+function offShow(err){const o=$('#off');if(!o)return;o.style.opacity='';const C=cty();
+ if(err){o.innerHTML='<p class="mut" style="margin-top:10px">Online-Suche gerade nicht erreichbar.</p>';return}
+ o.innerHTML=offRes.length?'<p class="mut" style="margin:12px 0 2px">Online · '+esc(C.n)+'</p>'+offRes.map((f,i)=>`<button class="food" onclick="offPick(${i})"><span>🌍 ${esc(f.n)}${f.b?`<span class="mut" style="display:block;font-size:12px">${esc(f.b)}</span>`:''}</span><span class="mut" style="flex:none">${f.k} kcal</span></button>`).join(''):'<p class="mut" style="margin-top:10px">Online nichts gefunden. Leg es selbst an oder ändere das Land in den ⚙️ Einstellungen.</p>'}
 async function offSearch(){
  const qe=$('#q'),o=$('#off'),id=offId;if(!qe||!o)return;
- const q=qe.value.trim(),C=cty();
+ const q=qe.value.trim(),C=cty(),key=q.toLowerCase()+'|'+(S.country||'de');
  try{
   const bc=/^\d{8,14}$/.test(q),F='fields=product_name,product_name_'+(C.l||'en')+',lang,brands,nutriments,code';
   const u=bc?`https://world.openfoodfacts.org/api/v2/product/${q}.json?${F}`:`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=24&sort_by=unique_scans_n&lc=${C.l||'de'}${C.t?'&tagtype_0=countries&tag_contains_0=contains&tag_0='+C.t:''}&${F}`;
@@ -318,11 +325,14 @@ async function offSearch(){
   if(!res.ok)throw 0;
   const j=await res.json();if(id!==offId)return;
   const arr=bc?(j.product?[j.product]:[]):(j.products||[]);
-  offRes=arr.map(p=>{const m=p.nutriments||{},k=m['energy-kcal_100g']!=null?m['energy-kcal_100g']:(m.energy_100g?m.energy_100g/4.184:null),nm=String((bc?p.product_name:(C.l&&p['product_name_'+C.l])||(!C.l||p.lang===C.l?p.product_name:''))||'').trim();
-   return {n:nm+(p.brands?' ('+p.brands.split(',')[0].trim()+')':''),k:Math.round(k),p:r1(+m.proteins_100g||0),c:r1(+m.carbohydrates_100g||0),f:r1(+m.fat_100g||0),ok:k!=null&&nm}}).filter(x=>x.ok);
-  o.innerHTML=offRes.length?'<p class="mut" style="margin-top:10px">Online (Open Food Facts · '+C.n+'):</p>'+offRes.map((f,i)=>`<button class="food" onclick="offPick(${i})"><span>🌍 ${esc(f.n)}</span><span class="mut">${f.k} kcal/100 g</span></button>`).join(''):'<p class="mut" style="margin-top:10px">Online nichts gefunden. Leg es selbst an oder ändere das Land in den ⚙️ Einstellungen.</p>';
- }catch(e){if(id!==offId)return;o.innerHTML='<p class="mut" style="margin-top:10px">Online-Suche gerade nicht erreichbar.</p>'}}
-function offPick(i){const f=offRes[i];S.custom.unshift({n:f.n,e:'🌍',k:f.k,p:f.p,c:f.c,f:f.f});save();amount(0)}
+  let list=arr.map(p=>{const m=p.nutriments||{},k=m['energy-kcal_100g']!=null?m['energy-kcal_100g']:(m.energy_100g?m.energy_100g/4.184:null),nm=String((bc?p.product_name:(C.l&&p['product_name_'+C.l])||(!C.l||p.lang===C.l?p.product_name:''))||'').trim();
+   return {n:nm,b:p.brands?p.brands.split(',')[0].trim():'',k:Math.round(k),p:r1(+m.proteins_100g||0),c:r1(+m.carbohydrates_100g||0),f:r1(+m.fat_100g||0),ok:k!=null&&nm}}).filter(x=>x.ok);
+  const seen=new Set();list=list.filter(x=>{const d=(x.n+'|'+x.b).toLowerCase();if(seen.has(d))return false;seen.add(d);return true});
+  if(!bc){const tk=q.toLowerCase().split(/\s+/),hit=list.filter(x=>tk.every(t=>(x.n+' '+x.b).toLowerCase().includes(t)));if(hit.length)list=hit;
+   list=list.map((x,i)=>({x,i,s:x.n.toLowerCase().startsWith(tk[0])?0:1})).sort((a,b)=>a.s-b.s||a.i-b.i).map(o=>o.x)}
+  offRes=list.slice(0,8);offCache[key]=offRes;offShow(false);
+ }catch(e){if(id!==offId)return;offShow(true)}}
+function offPick(i){const f=offRes[i],nn=f.n+(f.b?' ('+f.b+')':'');S.custom=S.custom.filter(x=>x.n!==nn);S.custom.unshift({n:nn,e:'🌍',k:f.k,p:f.p,c:f.c,f:f.f});save();amount(0)}
 
 // Fitti, der Motivationsbuddy
 const Q=['Der Couch-Kartoffel-Modus ist heute offiziell deaktiviert! 🥔','Jeder Schritt zählt, auch der zum Kühlschrank. Aber nur einer!','Muskeln wachsen nicht von allein. Leider. 💪','Heute schwitzen, morgen strahlen ✨','Du musst nicht perfekt sein, nur dranbleiben.','Restday ist auch Training. Dein Sofa ist stolz auf dich 😴','Ein Salat hat noch nie jemanden gebissen. Probier ihn!','Kleine Gewohnheiten, große Wirkung. Los gehts!','Wasser trinken nicht vergessen! 💧','Dein zukünftiges Ich sagt Danke 🙌','Streak halten! Ich hab schon Schweißbänder gekauft.','Heute noch nicht gelaufen? Die Schuhe vermissen dich 👟','Fortschritt ist Fortschritt, auch wenn er langsam ist.','Eiweiß, Gemüse, gute Laune. Das Rezept des Tages!'];
