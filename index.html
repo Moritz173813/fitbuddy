@@ -49,6 +49,12 @@ nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:2px
 .exn b{font-weight:800;flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .exn span{text-align:right;font-size:12px}
 .plus.sm2{width:24px;height:24px;font-size:15px}
+.scan{display:flex;align-items:center;gap:12px;width:100%;margin:8px 0 12px;padding:10px 14px;border:2px solid rgba(31,191,117,.45);background:rgba(31,191,117,.12);border-color:color-mix(in srgb,var(--g) 45%,transparent);background:color-mix(in srgb,var(--g) 12%,transparent);color:var(--ink);border-radius:18px;font:inherit;text-align:left;cursor:pointer}
+.scan .si{width:42px;height:42px;flex:none;border-radius:13px;background:var(--g);display:grid;place-content:center;font-size:22px}
+.scan b{display:block;font:600 17px Fredoka,Nunito,sans-serif}
+.scan small{display:block;font-size:12px;color:var(--mut)}
+.scan .ch{margin-left:auto;font-size:26px;color:var(--mut);line-height:1}
+.scan:focus-visible{outline:3px solid var(--y);outline-offset:2px}
 .exn:focus-visible,.plus:focus-visible{outline:3px solid var(--y);outline-offset:2px}
 .day.log::after{content:"";position:absolute;bottom:4px;left:50%;margin-left:-2.5px;width:5px;height:5px;border-radius:50%;background:currentColor}
 .week{display:flex;align-items:flex-end;gap:8px;height:120px;margin-top:10px}
@@ -212,7 +218,7 @@ const cycle=k=>{const v=S.days[k];if(!v)S.days[k]='gym';else if(v==='gym')S.days
 const del=i=>{S.log[T()].splice(i,1);render()};
 const addSteps=n=>{S.steps[T()]=(S.steps[T()]||0)+n;render()};
 const open=h=>{$('#sheet').innerHTML=h;$('#modal').classList.add('open')};
-const closeM=()=>$('#modal').classList.remove('open');
+const closeM=()=>{stopScan();$('#modal').classList.remove('open')};
 $('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeM()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM()});
 
@@ -221,7 +227,7 @@ function stepsDlg(){open(`<h3>Schritte heute</h3><input id="st" type="number" va
 function sleepDlg(){open(`<h3>Schlaf letzte Nacht</h3><div class="grid2"><input id="sh" type="number" placeholder="Stunden" min="0" max="16"><input id="sm" type="number" placeholder="Minuten" min="0" max="59"></div><button class="btn" onclick="S.watch.sleep=(+$('#sh').value||0)+' h '+(+$('#sm').value||0)+' min';closeM();render()">Speichern</button>`)}
 
 let curMeal=0;
-function addDlg(m){curMeal=m;open(`<h3>Essen suchen 🔍</h3><input id="q" placeholder="Name oder Barcode …" oninput="flist()" autocomplete="off"><div id="fl"></div><div id="off"></div><div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn alt sm" onclick="customDlg()">+ Eigenes Lebensmittel</button></div>`);flist();setTimeout(()=>$('#q').focus(),50)}
+function addDlg(m){curMeal=m;open(`<h3>Essen suchen 🔍</h3><button class="scan" onclick="scanDlg()"><span class="si">📷</span><span><b>Barcode scannen</b><small>Produkt sofort finden</small></span><span class="ch">›</span></button><input id="q" placeholder="Name oder Barcode …" oninput="flist()" autocomplete="off"><div id="fl"></div><div id="off"></div><div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn alt sm" onclick="customDlg()">+ Eigenes Lebensmittel</button></div>`);flist();setTimeout(()=>$('#q').focus(),50)}
 function flist(){const q=$('#q').value.toLowerCase();const r=allFoods().filter(f=>f.n.toLowerCase().includes(q)).slice(0,30);
  $('#fl').innerHTML=r.map(f=>{const i=allFoods().indexOf(f);return `<button class="food" onclick="amount(${i})"><span>${f.e} ${esc(f.n)}</span><span class="mut">${f.k} kcal/100 g</span></button>`}).join('')||(q.trim().length<2?'<p class="mut">Nichts gefunden. Leg es selbst an!</p>':'');offQueue()}
 function put(i){const f=allFoods()[i],g=+$('#gr').value||0,x=g/100;if(!g)return;
@@ -272,7 +278,7 @@ function settingsDlg(){
  open(`<div class="row sp"><h3>⚙️ Einstellungen</h3><button class="btn alt sm" onclick="closeM()">Schließen</button></div><label>Saisonale Deko<select onchange="S.season=this.value;save();applyDeco();settingsDlg()">${[['auto','Automatisch'],['off','Aus'],['xmas','Weihnachten (Vorschau)'],['halloween','Halloween (Vorschau)'],['easter','Ostern (Vorschau)']].map(o=>`<option value="${o[0]}" ${o[0]===cur?'selected':''}>${o[1]}</option>`).join('')}</select></label><label>Online-Lebensmittel aus<select onchange="S.country=this.value;save();settingsDlg()">${COUNTRIES.map(c=>`<option value="${c[0]}" ${c[0]===(S.country||'de')?'selected':''}>${c[1]}</option>`).join('')}</select></label><p class="mut">Zeigt nur Produkte aus diesem Land mit Namen in der dortigen Sprache. Standard: Deutschland.</p><p class="mut">Automatisch:<br>🎃 Herbst &amp; Halloween: 10. bis 31. Oktober<br>🎄 Weihnachten: 1. November bis 6. Januar<br>🐣 Ostern: 14 Tage vor bis Ostermontag (Ostersonntag: ${ed})</p>`)}
 
 // Mahlzeiten-Ansicht, Training
-S.burn=S.burn||{};
+S.burn=S.burn||{};S.custom.forEach(x=>{if(x.e==='🌍')x.e='🍽️'});
 const ACT=[["Krafttraining","🏋️",6],["Laufen","🏃",11],["Radfahren","🚴",8],["Schwimmen","🏊",9],["Yoga","🧘",3],["Spazieren","🚶",4]];
 function home(){
  const d=T(),t=totals(d),st=Math.round((S.steps[d]||0)*.04),wk=S.burn[d]||[],b=st+wk.reduce((a,x)=>a+x.k,0);
@@ -313,7 +319,7 @@ function offQueue(){offId++;clearTimeout(offT);try{offCtl&&offCtl.abort()}catch(
  offT=setTimeout(offSearch,250)}
 function offShow(err){const o=$('#off');if(!o)return;o.style.opacity='';const C=cty();
  if(err){o.innerHTML='<p class="mut" style="margin-top:10px">Online-Suche gerade nicht erreichbar.</p>';return}
- o.innerHTML=offRes.length?'<p class="mut" style="margin:12px 0 2px">Online · '+esc(C.n)+'</p>'+offRes.map((f,i)=>`<button class="food" onclick="offPick(${i})"><span>🌍 ${esc(f.n)}${f.b?`<span class="mut" style="display:block;font-size:12px">${esc(f.b)}</span>`:''}</span><span class="mut" style="flex:none">${f.k} kcal</span></button>`).join(''):'<p class="mut" style="margin-top:10px">Online nichts gefunden. Leg es selbst an oder ändere das Land in den ⚙️ Einstellungen.</p>'}
+ o.innerHTML=offRes.length?'<p class="mut" style="margin:12px 0 2px">Online · '+esc(C.n)+'</p>'+offRes.map((f,i)=>`<button class="food" onclick="offPick(${i})"><span>🍽️ ${esc(f.n)}${f.b?`<span class="mut" style="display:block;font-size:12px">${esc(f.b)}</span>`:''}</span><span class="mut" style="flex:none">${f.k} kcal</span></button>`).join(''):'<p class="mut" style="margin-top:10px">Online nichts gefunden. Leg es selbst an oder ändere das Land in den ⚙️ Einstellungen.</p>'}
 async function offSearch(){
  const qe=$('#q'),o=$('#off'),id=offId;if(!qe||!o)return;
  const q=qe.value.trim(),C=cty(),key=q.toLowerCase()+'|'+(S.country||'de');
@@ -332,7 +338,47 @@ async function offSearch(){
    list=list.map((x,i)=>({x,i,s:x.n.toLowerCase().startsWith(tk[0])?0:1})).sort((a,b)=>a.s-b.s||a.i-b.i).map(o=>o.x)}
   offRes=list.slice(0,8);offCache[key]=offRes;offShow(false);
  }catch(e){if(id!==offId)return;offShow(true)}}
-function offPick(i){const f=offRes[i],nn=f.n+(f.b?' ('+f.b+')':'');S.custom=S.custom.filter(x=>x.n!==nn);S.custom.unshift({n:nn,e:'🌍',k:f.k,p:f.p,c:f.c,f:f.f});save();amount(0)}
+function offPick(i){const f=offRes[i],nn=f.n+(f.b?' ('+f.b+')':'');S.custom=S.custom.filter(x=>x.n!==nn);S.custom.unshift({n:nn,e:'🍽️',k:f.k,p:f.p,c:f.c,f:f.f});save();amount(0)}
+
+// Barcode-Scanner
+let scanStream=null,scanTimer=null,scanRdr=null,scanBusy=false;
+function stopScan(){clearInterval(scanTimer);scanTimer=null;try{scanRdr&&scanRdr.reset()}catch(e){}scanRdr=null;if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null}}
+function loadZX(){return window.ZXing?Promise.resolve():new Promise((ok,no)=>{const e=document.createElement('script');e.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';e.onload=ok;e.onerror=no;document.head.appendChild(e)})}
+function scanDlg(){
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){toast('Dieser Browser kann die Kamera nicht nutzen. Gib den Barcode ins Suchfeld ein.');return}
+ scanHit.l=0;
+ open(`<div class="row sp"><h3>📷 Barcode scannen</h3><button class="btn alt sm" onclick="closeM()">Schließen</button></div><video id="vid" playsinline muted style="width:100%;border-radius:18px;background:#000;aspect-ratio:4/3;object-fit:cover;margin-top:10px"></video><p class="mut" id="scs" style="text-align:center">Kamera startet …</p>`);
+ startScan()}
+async function startScan(){
+ const v=$('#vid'),st=$('#scs'),live=()=>$('#vid')===v&&$('#modal').classList.contains('open'),CS={video:{facingMode:{ideal:'environment'}},audio:false};
+ scanBusy=false;
+ try{
+  if('BarcodeDetector' in window){
+   const det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});
+   scanStream=await navigator.mediaDevices.getUserMedia(CS);
+   if(!live()){stopScan();return}
+   v.srcObject=scanStream;await v.play();st.textContent='Halte den Barcode ins Bild …';
+   scanTimer=setInterval(async()=>{if(scanBusy||v.readyState<2)return;scanBusy=true;try{const r=await det.detect(v);if(r.length)scanHit(r[0].rawValue)}catch(e){}scanBusy=false},250)
+  }else{
+   st.textContent='Scanner wird geladen …';await loadZX();if(!live())return;
+   scanRdr=new ZXing.BrowserMultiFormatReader();
+   await scanRdr.decodeFromConstraints(CS,v,r=>{if(r)scanHit(r.getText())});
+   if(!live()){stopScan();return}
+   st.textContent='Halte den Barcode ins Bild …'
+  }
+ }catch(e){stopScan();const t=$('#scs');if(t&&live())t.textContent='Kamera nicht verfügbar. Erlaube den Zugriff im Browser oder gib den Barcode ins Suchfeld ein.'}}
+async function scanHit(code){
+ if(scanHit.l)return;scanHit.l=1;stopScan();
+ const st=$('#scs');if(st)st.textContent='Suche Produkt …';
+ try{
+  const L=cty().l||'de',res=await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,product_name_${L},brands,nutriments,code`);
+  if(!res.ok)throw 0;
+  const p=(await res.json()).product;if(!p)throw 'nf';
+  const m=p.nutriments||{},k=m['energy-kcal_100g']!=null?m['energy-kcal_100g']:(m.energy_100g?m.energy_100g/4.184:null),nm=String(p['product_name_'+L]||p.product_name||'').trim();
+  if(k==null||!nm)throw 'nf';
+  const br=p.brands?p.brands.split(',')[0].trim():'',nn=nm+(br?' ('+br+')':'');
+  S.custom=S.custom.filter(x=>x.n!==nn);S.custom.unshift({n:nn,e:'🍽️',k:Math.round(k),p:r1(+m.proteins_100g||0),c:r1(+m.carbohydrates_100g||0),f:r1(+m.fat_100g||0)});save();amount(0)
+ }catch(e){scanHit.l=0;addDlg(curMeal);toast(e==='nf'?'Produkt nicht gefunden. Leg es selbst an.':'Keine Verbindung. Versuch es nochmal.')}}
 
 // Fitti, der Motivationsbuddy
 const Q=['Der Couch-Kartoffel-Modus ist heute offiziell deaktiviert! 🥔','Jeder Schritt zählt, auch der zum Kühlschrank. Aber nur einer!','Muskeln wachsen nicht von allein. Leider. 💪','Heute schwitzen, morgen strahlen ✨','Du musst nicht perfekt sein, nur dranbleiben.','Restday ist auch Training. Dein Sofa ist stolz auf dich 😴','Ein Salat hat noch nie jemanden gebissen. Probier ihn!','Kleine Gewohnheiten, große Wirkung. Los gehts!','Wasser trinken nicht vergessen! 💧','Dein zukünftiges Ich sagt Danke 🙌','Streak halten! Ich hab schon Schweißbänder gekauft.','Heute noch nicht gelaufen? Die Schuhe vermissen dich 👟','Fortschritt ist Fortschritt, auch wenn er langsam ist.','Eiweiß, Gemüse, gute Laune. Das Rezept des Tages!'];
