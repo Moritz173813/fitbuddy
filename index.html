@@ -319,7 +319,7 @@ function offQueue(){offId++;clearTimeout(offT);try{offCtl&&offCtl.abort()}catch(
  offT=setTimeout(offSearch,250)}
 function offShow(err){const o=$('#off');if(!o)return;o.style.opacity='';const C=cty();
  if(err){o.innerHTML='<p class="mut" style="margin-top:10px">Online-Suche gerade nicht erreichbar.</p>';return}
- o.innerHTML=offRes.length?'<p class="mut" style="margin:12px 0 2px">Online · '+esc(C.n)+'</p>'+offRes.map((f,i)=>`<button class="food" onclick="offPick(${i})"><span>🍽️ ${esc(f.n)}${f.b?`<span class="mut" style="display:block;font-size:12px">${esc(f.b)}</span>`:''}</span><span class="mut" style="flex:none">${f.k} kcal</span></button>`).join(''):'<p class="mut" style="margin-top:10px">Online nichts gefunden. Leg es selbst an oder ändere das Land in den ⚙️ Einstellungen.</p>'}
+ o.innerHTML=offRes.length?offRes.map((f,i)=>`<button class="food" onclick="offPick(${i})"><span>🍽️ ${esc(f.n)}${f.b?`<span class="mut" style="display:block;font-size:12px">${esc(f.b)}</span>`:''}</span><span class="mut" style="flex:none">${f.k} kcal</span></button>`).join(''):'<p class="mut" style="margin-top:10px">Online nichts gefunden. Leg es selbst an oder ändere das Land in den ⚙️ Einstellungen.</p>'}
 async function offSearch(){
  const qe=$('#q'),o=$('#off'),id=offId;if(!qe||!o)return;
  const q=qe.value.trim(),C=cty(),key=q.toLowerCase()+'|'+(S.country||'de');
