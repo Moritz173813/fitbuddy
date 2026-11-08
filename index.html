@@ -120,7 +120,7 @@ input,select{width:100%;font:700 15px Nunito,sans-serif;padding:11px 14px;border
 </head>
 <body>
 <main>
-<header><h1>FitBuddy <span id="hd">💪</span></h1><div class="row" style="gap:6px"><button class="btn alt sm" id="theme" aria-label="Hell oder dunkel">🌗</button><button class="btn alt sm" onclick="settingsDlg()" aria-label="Einstellungen">⚙️</button></div></header>
+<header><h1>FitBuddy <span id="hd">💪</span></h1><div class="row" style="gap:6px"><button class="btn alt sm" id="theme" aria-label="Hell oder dunkel">🌗</button><button class="btn alt sm" id="cbtn" onclick="cloudDlg()" aria-label="Cloud-Sync" style="opacity:.55">☁️</button><button class="btn alt sm" onclick="settingsDlg()" aria-label="Einstellungen">⚙️</button></div></header>
 <div id="view"></div>
 </main>
 <nav id="nav"></nav>
@@ -129,6 +129,7 @@ input,select{width:100%;font:700 15px Nunito,sans-serif;padding:11px 14px;border
 <div id="deco" aria-hidden="true"></div>
 <div id="bubble" role="status"></div>
 <button id="fig" aria-label="Fitti, dein Motivationsbuddy"><span class="hat" id="hat"></span><svg viewBox="0 0 64 64"><ellipse cx="32" cy="58" rx="16" ry="3" fill="#000" opacity=".12"/><path d="M32 6c15 0 25 12 25 28 0 14-10 23-25 23S7 48 7 34C7 18 17 6 32 6z" fill="#1fbf75"/><ellipse cx="32" cy="42" rx="14" ry="11" fill="#d9f5e7"/><rect x="8" y="15" width="48" height="8" rx="4" fill="#ffc93c"/><circle cx="23" cy="31" r="6" fill="#fff"/><circle cx="41" cy="31" r="6" fill="#fff"/><circle cx="24" cy="32" r="3" fill="#12352a"/><circle cx="42" cy="32" r="3" fill="#12352a"/><path d="M24 41q8 8 16 0" fill="#fff" stroke="#12352a" stroke-width="2.5" stroke-linecap="round"/><rect x="1" y="38" width="10" height="5" rx="2" fill="#5ab0ff"/><rect x="53" y="38" width="10" height="5" rx="2" fill="#5ab0ff"/></svg></button>
+<script src="config.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const pad=n=>String(n).padStart(2,'0');
@@ -150,7 +151,9 @@ const MEALS=[["Frühstück","🍳"],["Mittagessen","🥗"],["Abendessen","🍝"]
 const S0={goal:2200,stepGoal:10000,custom:[],log:{},steps:{},days:{},plan:{},work:{},watch:{on:false,demo:false,hr:null,sleep:null,sync:null},tab:'home'};
 let S=Object.assign({},S0);
 try{const r=localStorage.getItem('fitbuddy');if(r)S=Object.assign({},S0,JSON.parse(r))}catch(e){}
-const save=()=>{try{localStorage.setItem('fitbuddy',JSON.stringify(S))}catch(e){}};
+const syncData=()=>{const o=Object.assign({},S);delete o.tab;delete o.watch;delete o.ts;delete o.cloud;return o};
+let lastJ=null;
+const save=()=>{if(lastJ!==null){const j=JSON.stringify(syncData());if(j!==lastJ){lastJ=j;S.ts=Date.now();cloudQueue()}}try{localStorage.setItem('fitbuddy',JSON.stringify(S))}catch(e){}};
 const allFoods=()=>S.custom.concat(DB);
 let calM=new Date();calM.setDate(1);
 let hrDev=null,demoT=null;
@@ -398,6 +401,73 @@ async function scanHit(code){
   S.custom=S.custom.filter(x=>x.n!==nn);S.custom.unshift({n:nn,e:'🍽️',k:Math.round(k),p:r1(+m.proteins_100g||0),c:r1(+m.carbohydrates_100g||0),f:r1(+m.fat_100g||0)});save();amount(0)
  }catch(e){scanHit.l=0;addDlg(curMeal);toast(e==='nf'?'Produkt nicht gefunden. Leg es selbst an.':'Keine Verbindung. Versuch es nochmal.')}}
 
+// Cloud-Sync (Supabase)
+const SB_URL=(window.FB_CONFIG||{}).url||'',SB_KEY=(window.FB_CONFIG||{}).key||'';
+let sb=null,sbUser=null,syncSt='',cloudT=null,pendingRemote=null;
+const cloudOn=()=>/^https:\/\//.test(SB_URL)&&SB_KEY.length>20;
+const hasLocal=()=>['log','days','steps','work','burn','plan'].some(k=>S[k]&&Object.keys(S[k]).length)||S.custom.length>0;
+const nowT=()=>new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+const updCloudBtn=()=>{const b=$('#cbtn');if(b)b.style.opacity=sbUser?1:.55};
+function loadJS(src){return new Promise((ok,no)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=no;document.head.appendChild(e)})}
+async function cloudInit(){
+ if(!cloudOn())return;
+ try{
+  await loadJS('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js');
+  sb=supabase.createClient(SB_URL,SB_KEY);
+  const r=await sb.auth.getSession();sbUser=r.data.session?r.data.session.user:null;
+  sb.auth.onAuthStateChange((ev,ses)=>{sbUser=ses?ses.user:null;updCloudBtn()});
+  updCloudBtn();
+  if(sbUser)await cloudPull(true)
+ }catch(e){syncSt='Offline'}}
+function cloudQueue(){clearTimeout(cloudT);if(!sbUser)return;syncSt='Wartet auf Abgleich …';cloudT=setTimeout(cloudPush,1500)}
+async function cloudPush(){
+ if(!sbUser)return;
+ try{
+  const {error}=await sb.from('fitbuddy').upsert({user_id:sbUser.id,data:syncData(),updated_at:new Date(S.ts||Date.now()).toISOString()});
+  if(error)throw error;
+  S.cloud=true;syncSt='Zuletzt abgeglichen: '+nowT();save();
+ }catch(e){syncSt='Abgleich fehlgeschlagen. Er wird beim nächsten Speichern erneut versucht.'}}
+async function cloudPull(first){
+ if(!sbUser)return;
+ try{
+  const {data,error}=await sb.from('fitbuddy').select('data,updated_at').eq('user_id',sbUser.id).maybeSingle();
+  if(error)throw error;
+  if(!data){if(!S.ts)S.ts=Date.now();await cloudPush();return}
+  const rts=Date.parse(data.updated_at)||0,lts=S.ts||0;
+  if(first&&!S.cloud&&hasLocal()){pendingRemote={d:data.data,ts:rts};choiceDlg();return}
+  if(rts>lts+500)applyRemote(data.data,rts);
+  else if(lts>rts+500)await cloudPush();
+  S.cloud=true;syncSt='Zuletzt abgeglichen: '+nowT();save();
+ }catch(e){syncSt='Offline'}}
+function applyRemote(d,ts){
+ const keep={tab:S.tab,watch:S.watch};
+ S=Object.assign({},JSON.parse(JSON.stringify(S0)),d,keep);S.burn=S.burn||{};S.ts=ts;S.cloud=true;
+ lastJ=JSON.stringify(syncData());applyDeco();
+ if(!$('#modal').classList.contains('open'))render();else save()}
+function choiceDlg(){open(`<h3>☁️ Daten zusammenführen</h3><p class="mut">In deinem Konto liegen schon Daten, und auf diesem Gerät auch. Welche sollen gelten? Die anderen werden überschrieben.</p><button class="btn" style="width:100%;margin-bottom:8px" onclick="useCloud()">Cloud-Daten laden</button><button class="btn alt" style="width:100%" onclick="useDevice()">Dieses Gerät hochladen</button>`)}
+function useCloud(){if(pendingRemote)applyRemote(pendingRemote.d,pendingRemote.ts);pendingRemote=null;syncSt='Zuletzt abgeglichen: '+nowT();closeM();render()}
+async function useDevice(){pendingRemote=null;S.ts=Date.now();closeM();await cloudPush();render()}
+function cloudDlg(){
+ let h='<div class="row sp"><h3>☁️ Cloud-Sync</h3><button class="btn alt sm" onclick="closeM()">Schließen</button></div>';
+ if(!cloudOn())h+='<p class="mut">Noch nicht eingerichtet. Die Supabase-Daten fehlen in der Datei config.js.</p>';
+ else if(!sb)h+='<p class="mut">Die Verbindung wird aufgebaut oder du bist offline. Versuch es gleich noch einmal.</p>';
+ else if(sbUser)h+=`<p>Angemeldet als<br><b>${esc(sbUser.email||'')}</b></p><p class="mut">${esc(syncSt||'Verbunden')}</p><div class="row" style="flex-wrap:wrap"><button class="btn sm" onclick="cloudNow()">Jetzt abgleichen</button><button class="btn alt sm" onclick="cloudOut()">Abmelden</button></div><p class="mut">Neue Einträge werden automatisch gespeichert. Beim Abmelden bleiben die Daten auf diesem Gerät.</p>`;
+ else h+=`<p class="mut">Melde dich an, damit deine Daten auf allen Geräten gleich sind.</p><label>E-Mail<input id="ce" type="email" autocomplete="email" inputmode="email"></label><label>Passwort (mind. 6 Zeichen)<input id="cp" type="password" autocomplete="current-password"></label><div class="row" style="flex-wrap:wrap;margin-top:6px"><button class="btn" onclick="cloudLogin(false)">Anmelden</button><button class="btn alt" onclick="cloudLogin(true)">Neu registrieren</button></div>`;
+ open(h)}
+async function cloudLogin(up){
+ const em=$('#ce').value.trim(),pw=$('#cp').value;
+ if(!em||pw.length<6){toast('E-Mail und Passwort (mind. 6 Zeichen) eingeben');return}
+ try{
+  const r=up?await sb.auth.signUp({email:em,password:pw}):await sb.auth.signInWithPassword({email:em,password:pw});
+  if(r.error){toast(/invalid login/i.test(r.error.message)?'E-Mail oder Passwort falsch, oder die E-Mail ist noch nicht bestätigt':r.error.message);return}
+  if(!r.data.session){toast('Fast geschafft: Bestätige die E-Mail und melde dich danach an');return}
+  sbUser=r.data.session.user;updCloudBtn();closeM();await cloudPull(true);
+  if(!$('#modal').classList.contains('open'))toast('Angemeldet ☁️')
+ }catch(e){toast('Keine Verbindung')}}
+async function cloudNow(){await cloudPull(false);toast(syncSt||'Abgeglichen');cloudDlg()}
+async function cloudOut(){clearTimeout(cloudT);try{await sb.auth.signOut()}catch(e){}sbUser=null;S.cloud=false;syncSt='';save();updCloudBtn();closeM();toast('Abgemeldet')}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&sbUser&&!$('#modal').classList.contains('open'))cloudPull(false)});
+
 // Fitti, der Motivationsbuddy
 const Q=['Der Couch-Kartoffel-Modus ist heute offiziell deaktiviert! 🥔','Jeder Schritt zählt, auch der zum Kühlschrank. Aber nur einer!','Muskeln wachsen nicht von allein. Leider. 💪','Heute schwitzen, morgen strahlen ✨','Du musst nicht perfekt sein, nur dranbleiben.','Restday ist auch Training. Dein Sofa ist stolz auf dich 😴','Ein Salat hat noch nie jemanden gebissen. Probier ihn!','Kleine Gewohnheiten, große Wirkung. Los gehts!','Wasser trinken nicht vergessen! 💧','Dein zukünftiges Ich sagt Danke 🙌','Streak halten! Ich hab schon Schweißbänder gekauft.','Heute noch nicht gelaufen? Die Schuhe vermissen dich 👟','Fortschritt ist Fortschritt, auch wenn er langsam ist.','Eiweiß, Gemüse, gute Laune. Das Rezept des Tages!'];
 let lastQ=-1;
@@ -422,7 +492,7 @@ function disc(){clearInterval(demoT);try{hrDev&&hrDev.gatt.disconnect()}catch(e)
 
 $('#theme').onclick=()=>{const d=document.documentElement,dark=d.dataset.theme?d.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;d.dataset.theme=dark?'light':'dark'};
 if(S.watch.on&&S.watch.demo){demo()}else if(S.watch.on){S.watch.on=false;S.watch.hr=null}
-applyDeco();render();mascotInit();
+lastJ=JSON.stringify(syncData());applyDeco();render();mascotInit();cloudInit();updCloudBtn();
 </script>
 </body>
 </html>
